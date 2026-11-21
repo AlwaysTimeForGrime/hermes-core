@@ -599,6 +599,18 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
             return None
         return registered
 
+    def get_turn_enrichers(self) -> list[Any]:
+        """Return the currently registered plugin turn enrichers."""
+        return [enricher for _owner, enricher in self._turn_enrichers]
+
+    def remove_turn_enricher(self, enricher: Any) -> None:
+        """Remove a plugin turn enricher by identity after its resources are closed."""
+        self._turn_enrichers[:] = [
+            (owner, existing)
+            for owner, existing in self._turn_enrichers
+            if existing is not enricher
+        ]
+
     def _collect_directory_manifests(self) -> list[PluginManifest]:
         """Directory manifests in full-discovery order (see :func:`collect_directory_manifests`)."""
         return collect_directory_manifests()

@@ -512,6 +512,17 @@ Cloud providers should document what parts of `messages` are sent off-device.
 Tool calls and tool results may contain file paths, command output, or other
 workspace data.
 
+### Turn enrichers
+
+Plugins may register an observer-only `TurnEnricher` with
+`ctx.register_turn_enricher(...)`. Its `enrich_turn` callback receives the completed
+turn projection directly, including the optional `messages` transcript; the core does
+not redact this callback's arguments. Before writing to an external index, the enricher
+must call `agent.redact.redact_for_egress` for every string and apply its own size bounds.
+Enricher failures are isolated from the turn. `shutdown()` releases all resources and
+must be idempotent because plugin unload and session teardown can both invoke it; after
+shutdown, no further `enrich_turn` call is made.
+
 ## Profile Isolation
 
 All storage paths **must** use the `hermes_home` kwarg from `initialize()`, not hardcoded `~/.hermes`:

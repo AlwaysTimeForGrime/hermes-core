@@ -78,8 +78,8 @@ def test_turn_enricher_registration_removes_and_shuts_down_on_unload():
     ctx = PluginContext(PluginManifest(name="demo"), manager)
     enricher = DemoEnricher()
     ctx.register_turn_enricher(enricher)
-    assert manager._turn_enrichers == [("demo", enricher)]
+    assert manager.get_turn_enrichers() == [enricher]
 
     manager.unload()
-    assert manager._turn_enrichers == []
+    assert manager.get_turn_enrichers() == []
     assert enricher.shutdowns == 1

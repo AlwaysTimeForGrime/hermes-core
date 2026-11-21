@@ -359,15 +359,11 @@ class MemoryManager:
         # unloaded between turns, especially after a forced discovery sweep.
         try:
             from hermes_cli.plugins import get_plugin_manager
-            plugin_enrichers = get_plugin_manager()._turn_enrichers
+            plugin_enrichers = get_plugin_manager().get_turn_enrichers()
         except Exception as exc:
             logger.warning("Turn enricher discovery failed (%s)", type(exc).__name__)
             plugin_enrichers = []
-        plugin_values = [
-            item[1] if isinstance(item, tuple) and len(item) == 2 else item
-            for item in plugin_enrichers
-        ]
-        return list(self._secondary_enrichers) + plugin_values
+        return list(self._secondary_enrichers) + plugin_enrichers
 
     def add_secondary_enricher(self, enricher: Any) -> None:
         """Register a best-effort async index/enrichment sink beside the primary provider.
@@ -957,11 +953,20 @@ class MemoryManager:
         self._drain_sync_executor()
         # Shutdown all turn enrichers (manager-local + plugin-registered)
         all_enrichers = self._get_turn_enrichers()
+        try:
+            from hermes_cli.plugins import get_plugin_manager
+            plugin_manager = get_plugin_manager()
+        except Exception as exc:
+            logger.warning("Turn enricher cleanup failed (%s)", type(exc).__name__)
+            plugin_manager = None
         for enricher in all_enrichers[::-1]:
             try:
                 enricher.shutdown()
             except Exception as e:
                 logger.warning("Secondary memory enricher shutdown failed (%s)", type(e).__name__)
+            finally:
+                if plugin_manager is not None:
+                    plugin_manager.remove_turn_enricher(enricher)
         self._each_provider("shutdown failed", lambda p: p.shutdown(), level=logging.WARNING,
                             providers=self._providers[::-1])
 

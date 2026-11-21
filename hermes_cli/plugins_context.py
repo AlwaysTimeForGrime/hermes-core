@@ -269,7 +269,12 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
         self._track_mapping_entry("approval_transport", clean, transports, entry, None)
 
     def register_turn_enricher(self, enricher: Any) -> None:
-        """Register a turn-enrichment sink (observer-only, fired after primary memory sync)."""
+        """Register an observer-only sink fired after primary memory sync.
+
+        The callback receives the turn projection without core redaction. Enrichers must redact
+        every string and transcript before external egress, bound its size, and make ``shutdown``
+        idempotent because unload and session teardown may both close the sink.
+        """
         from agent.memory_provider import TurnEnricher
         if self._wrong_type(enricher, TurnEnricher, "turn enricher", "a"):
             return
@@ -277,15 +282,12 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
         _facade().logger.info("Plugin %s registered turn enricher", self.manifest.name)
         # Track for unload cleanup (shutdown the enricher on plugin unload).
         def _cleanup() -> None:
-            self._manager._turn_enrichers[:] = [
-                (owner, existing)
-                for owner, existing in self._manager._turn_enrichers
-                if existing is not enricher
-            ]
             try:
                 enricher.shutdown()
             except Exception as e:
                 _facade().logger.warning("Turn enricher shutdown failed (%s)", type(e).__name__)
+            finally:
+                self._manager.remove_turn_enricher(enricher)
         self._track("turn_enricher", f"turn_enricher:{id(enricher)}", _cleanup)
 
     @_serialized_replacement
