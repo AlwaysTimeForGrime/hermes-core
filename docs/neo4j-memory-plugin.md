@@ -54,10 +54,10 @@ The standalone plugin's implementation and history are maintained in the separat
 |---|---|
 | `neo4j-memory/plugin/neo4j_memory/neo4j_enrichment.py` | `Neo4jEnricher`: standalone env-gated secondary sink; writes `:HermesTurn` nodes; bounded redacted trace projection; 3-attempt retry on transient errors |
 | `neo4j-memory/plugin/neo4j_memory/topic_context_ledger.py` | `TopicContextLedger`: non-production prototype — per-session versioned topic snapshots, generation/deadline/query-fingerprint stale-result rejection, bounded daemon workers |
-| `neo4j-memory/plugin/neo4j_memory/fastmcp_debug_server.py` | `DebugController` + FastMCP tools for inspecting ledger state and running deterministic delayed-provider scenarios |
+| `neo4j-memory/plugin/dashboard/plugin_api.py` | Dashboard `APIRouter` + `DebugController` for inspecting ledger state and running deterministic delayed-provider scenarios |
 | `neo4j-memory/plugin/tests/test_neo4j_enrichment.py` | Enricher tests |
 | `neo4j-memory/plugin/tests/test_topic_context_ledger.py` | Ledger tests |
-| `neo4j-memory/plugin/tests/test_fastmcp_debug_server.py` | Debug controller tests |
+| `neo4j-memory/plugin/tests/test_dashboard_api.py` | Dashboard API/controller tests |
 
 ### Modified tracked files
 
@@ -68,9 +68,25 @@ The standalone plugin's implementation and history are maintained in the separat
 | `hermes_cli/plugins_context.py` | `PluginContext.register_turn_enricher(...)` host seam |
 | `neo4j-memory/plugin/pyproject.toml` | Standalone plugin package with bounded Neo4j dependency |
 | `hermes_cli/data/plugin_api.json` | Published API entry for the registration seam |
-| `uv.lock` | Core lockfile after removing the Neo4j/FastMCP extras |
+| `uv.lock` | Core lockfile after removing the Neo4j dashboard-debug extras |
 
 ## How it works
+
+## Dashboard API
+
+The plugin exposes `dashboard/plugin_api.py`, mounted by Hermes at
+`/api/plugins/neo4j-memory/`. Hermes applies authentication, profile secret
+scope, plugin enablement, and runtime-disable guards around these handlers;
+the plugin itself does not duplicate an enabled-state guard.
+
+| Route | Purpose |
+|---|---|
+| `GET /state` | Ledger counters and active worker count |
+| `GET /sessions/{session_id}/topics/{topic}` | One immutable snapshot, if present |
+| `POST /scenarios/delayed` | Deterministic delayed-provider trigger for diagnostics |
+
+Unauthenticated requests return `401`; a disabled plugin is not mounted and
+returns `404` from the dashboard host.
 
 ```
 turn completes (not interrupted)
@@ -100,7 +116,7 @@ imported lazily.
 turn-start path (never waits on a provider), `schedule`/`start_update`/`accept`
 for async updates with monotonic generations, per-session query fingerprints,
 deadlines checked at publication, and stale-result rejection. It has **no
-production wiring** — only the FastMCP debug server exercises it.
+production wiring** — only the dashboard API exercises it.
 
 ## Known bugs — all fixed 2026-11-20
 
@@ -120,9 +136,8 @@ Verified by the standalone plugin test suite (23 enricher, ledger, and debug tes
 
 **Prototype hygiene:**
 
-3. ~~Debug server import side effect + crash~~ — module-level `create_debug_server()`
-   removed; `main()` builds lazily under `__main__`, so `create_debug_server()`
-   raises the clean `RuntimeError` when the `fastmcp` extra is absent.
+3. ~~Debug API import side effect + crash~~ — replaced by a side-effect-free
+   dashboard `APIRouter`; blocking ledger work is dispatched with `asyncio.to_thread`.
 4. ~~Ledger `_states` unbounded~~ — `max_sessions=1024`; `start_update` evicts the
    least-useful idle state (no active token, earliest snapshot expiry) and refuses
    new sessions only when every state has an active update (`dropped` counter).
@@ -184,8 +199,8 @@ Implemented shape (2026-11-21):
 
 - Core focused tests: 83 passed (`test_plugins_context.py`, memory manager scope,
   and memory provider contracts).
-- Standalone plugin tests: 23 passed, 1 skipped (enricher, topic ledger, debug server).
-- `uv.lock` was regenerated from `pyproject.toml` after removing core-only Neo4j/FastMCP extras.
+- Standalone plugin tests: focused enricher, ledger, and dashboard API tests pass.
+- `uv.lock` remains core-owned; the standalone plugin declares its own bounded dependencies.
 - Live Neo4j plugin smoke write/query/cleanup passed on 2026-11-21.
 - `scripts/check` currently fails the repository health gate on seven existing seam violations
   (file-size cap and broad exception handling); no documentation checks failed.
