@@ -59,3 +59,27 @@ def test_ctx_reads_the_section_limit_from_the_facade(monkeypatch):
 def test_init_annotations_still_resolve():
     hints = typing.get_type_hints(PluginContext.__init__)
     assert hints == {"manifest": PluginManifest, "manager": PluginManager}
+
+
+def test_turn_enricher_registration_removes_and_shuts_down_on_unload():
+    from agent.memory_provider import TurnEnricher
+
+    class DemoEnricher(TurnEnricher):
+        def __init__(self):
+            self.shutdowns = 0
+
+        def enrich_turn(self, user_content, assistant_content, **kwargs):
+            pass
+
+        def shutdown(self):
+            self.shutdowns += 1
+
+    manager = PluginManager()
+    ctx = PluginContext(PluginManifest(name="demo"), manager)
+    enricher = DemoEnricher()
+    ctx.register_turn_enricher(enricher)
+    assert manager._turn_enrichers == [("demo", enricher)]
+
+    manager.unload()
+    assert manager._turn_enrichers == []
+    assert enricher.shutdowns == 1

@@ -81,6 +81,33 @@ def is_trivial_prompt(text: Optional[str]) -> bool:
     return bool(TRIVIAL_PROMPT_RE.match(stripped))
 
 
+class TurnEnricher(ABC):
+    """Optional secondary sink that observes completed turns without affecting primary memory.
+
+    Plugins register turn enrichers via ``PluginContext.register_turn_enricher``. Unlike
+    ``MemoryProvider``, a turn enricher is an observer-only sink — it does not provide recall
+    context or tools, and failures must be logged and swallowed (never break a turn).
+
+    Use case: secondary indexes (Neo4j, Elasticsearch), analytics, or audit sinks that need
+    to see completed turns but should not affect the primary memory system's behavior.
+    """
+
+    @abstractmethod
+    def enrich_turn(
+        self,
+        user_content: str,
+        assistant_content: str,
+        *,
+        session_id: str = "",
+        messages: Optional[list[dict[str, Any]]] = None,
+    ) -> None:
+        """Persist a bounded turn projection. Failures must be logged and swallowed."""
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Release resources; no further enrich_turn calls after this."""
+
+
 class MemoryProvider(ABC):
     """Abstract base class for memory providers.
 

@@ -17,8 +17,7 @@
     "audit:fix:web": "pnpm audit --fix --filter web",
     "audit:fix:tui": "pnpm audit --fix --filter hermes-tui",
     "check": "pnpm -r check",
-    "fix": "pnpm -r fix",
-    "prepare": "node -e \"const {existsSync}=require('fs');const {spawnSync}=require('child_process');if(existsSync('.git'))spawnSync('lefthook',['install'],{stdio:'inherit',shell:true})\""
+    "fix": "pnpm -r fix"
   },
   "repository": {
     "type": "git",
@@ -36,7 +35,6 @@
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-unused-imports": "4.4.1",
     "globals": "17.13.0",
-    "lefthook": "2.2.1",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1"
   },

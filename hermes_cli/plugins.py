@@ -308,6 +308,10 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
         self._approval_transports: dict[str, Any] = {}
         self._slack_action_handlers: list[tuple] = []
         self._platform_handler_factories: dict[str, list[tuple]] = {}
+        # Turn enrichers registered by plugins (observer-only sinks for completed turns).
+        # Keep ownership with each registration so force-reload/unload cannot leave a
+        # closed enricher in a later turn.
+        self._turn_enrichers: list[tuple[str, Any]] = []
         # Process-owned discovery listeners (``on_plugin_loaded``); never cleared by unload().
         self._plugin_loaded_listeners: list[Callable] = []
         # Event bus: owner-tagged subscriptions (unload removes zombies); one daemon worker keeps

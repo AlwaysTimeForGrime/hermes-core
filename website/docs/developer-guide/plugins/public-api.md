@@ -123,6 +123,7 @@ with a name allows that one name only.
 | `process_identity` | `holder_pid_checkable` | developer-guide/plugins/index.md § `hermes_state` deprecated: the storage interface replacements |
 | `hermes_dir_acl` | `make_user_dir` | developer-guide/plugins/index.md § `hermes_state` deprecated: the storage interface replacements |
 | `agent.context_references` | whole module | PluginContext (hermes_cli/plugins_context.py) |
+| `agent.memory_provider` | `TurnEnricher` | PluginContext (hermes_cli/plugins_context.py) |
 | `agent.plugin_llm` | whole module | PluginContext (hermes_cli/plugins_context.py) |
 | `agent.transcription_provider` | whole module | PluginContext (hermes_cli/plugins_context.py) |
 | `agent.tts_provider` | whole module | PluginContext (hermes_cli/plugins_context.py) |
