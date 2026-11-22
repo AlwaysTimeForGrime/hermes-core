@@ -151,7 +151,6 @@ jobs:
 
   # Registry-side stitch of the two digests into one tagged manifest list.
   merge:
-    if: github.repository == 'NousResearch/hermes-agent'
     # Implicit success(): runs only when both publish legs pushed.
     needs: [publish]
     # GitHub-hosted with docker/setup-buildx-action, as before the runner migration: on
