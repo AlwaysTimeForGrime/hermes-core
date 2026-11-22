@@ -192,14 +192,32 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 DESC_RE = re.compile(r"^description:\s*(.+?)\s*$", re.MULTILINE)
 TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
 H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
-# MDX pages open with component imports — markup plumbing, not prose.
-MDX_IMPORT_RE = re.compile(r"^(?:import|export)\s.*$\n?", re.MULTILINE)
+# MDX pages open with component imports — markup plumbing, not prose. Only
+# module specifiers (`from '...'`) are plumbing: a bare `import os` inside a
+# Python example must survive, and so must anything inside a fenced block.
+MDX_MODULE_RE = re.compile(r"^(?:import|export)\s.+\bfrom\s+['\"][^'\"]+['\"];?\s*$")
+FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 
 
 def _unquote(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
     return value
+
+
+def _strip_mdx_modules(body: str) -> str:
+    """Drop MDX module imports outside fenced code blocks."""
+    kept: list[str] = []
+    in_fence = False
+    for line in body.splitlines(keepends=True):
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            kept.append(line)
+            continue
+        if not in_fence and MDX_MODULE_RE.match(line.rstrip("\r\n")):
+            continue
+        kept.append(line)
+    return "".join(kept)
 
 
 def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
@@ -215,8 +233,7 @@ def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
             found = pattern.search(fm)
             if found:
                 meta[key] = _unquote(found.group(1))
-    if path.suffix == ".mdx":
-        body = MDX_IMPORT_RE.sub("", body)
+    body = _strip_mdx_modules(body)
     return meta, body
 
 
@@ -356,8 +373,12 @@ def emit_llms_full() -> str:
         seen.add(path)
         title, _desc = resolve_meta(slug)
         _meta, body = read_frontmatter(path)
+        body = body.lstrip("\n")
         chunks.append(f"<!-- source: website/docs/{path.relative_to(DOCS)} -->\n")
-        chunks.append(f"# {title}\n\n")
+        # Most pages open with their own H1; synthesising a second one doubles
+        # the title for every reader that renders the file.
+        if not H1_RE.match(body):
+            chunks.append(f"# {title}\n\n")
         chunks.append(body.rstrip() + "\n\n---\n\n")
 
     # Curated order first, so a reader truncating on token budget keeps the
