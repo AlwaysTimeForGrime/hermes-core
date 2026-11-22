@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
+
+try:
+    from agent.secret_scope import UnscopedSecretError
+except ImportError:  # standalone unit tests can exercise the plugin without Hermes installed
+    class UnscopedSecretError(RuntimeError):
+        pass
 
 log = logging.getLogger(__name__)
 _HIDDEN = {"reasoning", "thinking", "reasoning_content", "thought", "chain_of_thought"}
@@ -32,11 +37,13 @@ def _trace(user: str, assistant: str, session_id: str | None, messages: list[dic
 
 def _secret(name: str) -> str | None:
     try:
-        from agent.secret_scope import get_secret
-        return get_secret(name)
-    except (ImportError, KeyError, RuntimeError):
-        mapping = {"NEO4J_MEMORY_URI": "HERMES_NEO4J_URI", "NEO4J_MEMORY_USERNAME": "HERMES_NEO4J_USERNAME", "NEO4J_MEMORY_PASSWORD": "HERMES_NEO4J_PASSWORD"}
-        return os.getenv(mapping.get(name, name))
+        from agent.secret_scope import UnscopedSecretError, get_secret
+    except ImportError:
+        return None
+    try:
+        return get_secret(name, None)
+    except UnscopedSecretError:
+        return None
 
 
 @dataclass
@@ -56,9 +63,12 @@ class Neo4jEnricher:
         if not config.get("enabled", False):
             return None
         secret_getter = secret_getter or _secret
-        uri = secret_getter("NEO4J_MEMORY_URI") or config.get("uri")
-        username = secret_getter("NEO4J_MEMORY_USERNAME") or config.get("username")
-        password = secret_getter("NEO4J_MEMORY_PASSWORD") or config.get("password")
+        try:
+            uri = secret_getter("NEO4J_MEMORY_URI")
+            username = secret_getter("NEO4J_MEMORY_USERNAME")
+            password = secret_getter("NEO4J_MEMORY_PASSWORD")
+        except UnscopedSecretError:
+            return None
         if not uri or not username or not password:
             return None
         try:
@@ -66,19 +76,6 @@ class Neo4jEnricher:
         except ImportError:
             return None
         return cls(GraphDatabase.driver(uri, auth=(username, password)), database=str(config.get("database", "neo4j")), content_max_bytes=min(262144, max(1, int(config.get("content_max_bytes", 65536)))), debug_trace_enabled=bool(config.get("debug_trace_enabled", False)), trace_max_bytes=min(262144, max(1, int(config.get("trace_max_bytes", 65536)))))
-
-    @classmethod
-    def from_environment(cls) -> "Neo4jEnricher | None":
-        if os.getenv("HERMES_NEO4J_ENRICHMENT_ENABLED", "").lower() not in {"1", "true", "yes", "on"}:
-            return None
-        uri, user, password = (_secret(k) for k in ("NEO4J_MEMORY_URI", "NEO4J_MEMORY_USERNAME", "NEO4J_MEMORY_PASSWORD"))
-        if not uri or not user or not password:
-            return None
-        try:
-            from neo4j import GraphDatabase
-        except ImportError:
-            return None
-        return cls(GraphDatabase.driver(uri, auth=(user, password)), database=os.getenv("HERMES_NEO4J_DATABASE", "neo4j"), content_max_bytes=min(262144, max(1, int(os.getenv("HERMES_NEO4J_CONTENT_MAX_BYTES", "65536")))), debug_trace_enabled=os.getenv("HERMES_NEO4J_DEBUG_TRACE_ENABLED", "").lower() in {"1", "true", "yes", "on"}, trace_max_bytes=min(262144, max(1, int(os.getenv("HERMES_NEO4J_TRACE_MAX_BYTES", "65536")))) )
 
     def enrich_turn(self, user_content: str, assistant_content: str, *, session_id: str | None = None, messages: list[dict[str, Any]] | None = None, **_: Any) -> None:
         if self._closed:
