@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from neo4j_memory.topic_context_ledger import TopicContextLedger
+_PLUGIN_ROOT = str(Path(__file__).resolve().parents[1])
+_INSERTED_PLUGIN_ROOT = _PLUGIN_ROOT not in sys.path
+if _INSERTED_PLUGIN_ROOT:
+    sys.path.insert(0, _PLUGIN_ROOT)
+try:
+    from neo4j_memory.topic_context_ledger import TopicContextLedger
+finally:
+    if _INSERTED_PLUGIN_ROOT:
+        sys.path.remove(_PLUGIN_ROOT)
 
 router = APIRouter()
 
