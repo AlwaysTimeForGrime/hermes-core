@@ -82,6 +82,7 @@ jobs:
   # the classifier fails open (every lane true), so post-merge validation is
   # never weakened.
   mode:
+    if: github.repository == 'NousResearch/hermes-agent'
     name: Resolve release phase and affected areas
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
@@ -533,7 +534,7 @@ jobs:
   # login/push fails loudly (missing credentials) instead of faking green.
   release-publish:
     name: Publish tested Docker image (${{ matrix.variant }}/${{ matrix.arch }})
-    if: needs.mode.outputs.phase == 'publish'
+    if: (needs.mode.outputs.phase == 'publish') && github.repository == 'NousResearch/hermes-agent'
     needs: [mode]
     environment: container-publish
     strategy:
@@ -630,7 +631,7 @@ jobs:
   # to the parent release receipt. Registry-side only; nothing is rebuilt.
   release-publish-manifest:
     name: Assemble versioned manifest and digest receipt
-    if: needs.mode.outputs.phase == 'publish'
+    if: (needs.mode.outputs.phase == 'publish') && github.repository == 'NousResearch/hermes-agent'
     needs: [mode, release-publish]
     # GitHub-hosted with docker/setup-buildx-action, as before the runner migration: on
     # Blacksmith `imagetools create` cannot commit a manifest list to Docker Hub (404 on the
@@ -765,7 +766,7 @@ jobs:
   # publisher turns this red instead of letting the phase go green.
   release-phase-gate:
     name: Docker phase requirements met
-    if: always() && inputs.release-phase != ''
+    if: (always() && inputs.release-phase != '') && github.repository == 'NousResearch/hermes-agent'
     needs: [mode, build, release-publish, release-publish-manifest]
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
