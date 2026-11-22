@@ -141,8 +141,8 @@ per variant and a name → variant table (`tools/environments/`, its table still
   use only the published plugin API (`hermes_cli/data/plugin_api.json`, `ctx`). Existing crossings
   are baselined; `scripts/boundary_lint.py` fails the test suite (not `scripts/check`) on new ones.
 - **A new config key or slash command ships with its docs** (`tests/ci/test_docs_drift.py`).
-- **Commits and PRs:** rebase onto `main` before merging (a squash from a stale branch silently
-  reverts newer fixes); 1–2 invariant tests per fix, proven red on the base.
+- **Commits and PRs:** rebase onto `main` (a squash from a stale branch silently
+  reverts newer fixes); 1–2 invariant tests per fix, proven red on the base. Push; `gh pr checks`.
 - **Tests:** always `scripts/run_tests.sh`, never bare `pytest`; behaviour contracts, never
   change-detectors or source-reading tests; host-specific behaviour is tested on that host with
   `@pytest.mark.platforms(...)`, never by faking `sys.platform`; tests never write to `~/.hermes/`.
