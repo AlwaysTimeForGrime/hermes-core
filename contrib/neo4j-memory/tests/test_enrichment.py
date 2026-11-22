@@ -57,3 +57,14 @@ def test_from_config_uses_explicit_profile_secret_names(monkeypatch):
     enricher = Neo4jEnricher.from_config({"enabled": True}, secret_getter=lambda name: (seen.append(name), values[name])[1])
     assert enricher is not None
     assert seen == ["NEO4J_MEMORY_URI", "NEO4J_MEMORY_USERNAME", "NEO4J_MEMORY_PASSWORD"]
+
+
+def test_legacy_hermes_environment_does_not_activate_plugin(monkeypatch):
+    monkeypatch.setenv("HERMES_NEO4J_ENRICHMENT_ENABLED", "true")
+    monkeypatch.setenv("HERMES_NEO4J_URI", "bolt://legacy")
+    class Context:
+        def get_config(self, _key):
+            return None
+        def register_turn_enricher(self, _enricher):
+            raise AssertionError("legacy environment must not activate the plugin")
+    register(Context())
