@@ -59,7 +59,7 @@ class Neo4jEnricher:
         self._closed = False
 
     @classmethod
-    def from_config(cls, config: dict[str, Any], secret_getter=None) -> "Neo4jEnricher | None":
+    def from_config(cls, config: dict[str, Any], secret_getter=None) -> Neo4jEnricher | None:
         if not config.get("enabled", False):
             return None
         secret_getter = secret_getter or _secret

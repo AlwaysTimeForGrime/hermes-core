@@ -101,11 +101,8 @@ class TurnEnricher(ABC):
         session_id: str = "",
         messages: Optional[list[dict[str, Any]]] = None,
     ) -> None:
-        """Persist a bounded, redacted turn projection.
+        """Persist a bounded turn projection.
 
-        The core passes the completed turn projection directly to this observer and does not
-        redact it first. Implementations must call ``agent.redact.redact_for_egress`` (and apply
-        their own size bounds) before sending any string or transcript content to an external sink.
         Failures must be logged and swallowed.
         """
 

@@ -73,9 +73,7 @@ class TopicContextLedger:
                 self._stats["cache_hits"] += 1
                 return snapshot.context
             self._stats["cache_misses"] += 1
-            if state and state.snapshot:
-                self._stats["query_misses"] += 1
-            elif any(key[0] == session_id for key in self._states):
+            if (state and state.snapshot) or any(key[0] == session_id for key in self._states):
                 self._stats["query_misses"] += 1
             else:
                 self._stats["session_misses"] += 1

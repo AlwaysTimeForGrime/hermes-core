@@ -523,9 +523,7 @@ workspace data.
 
 Plugins may register an observer-only `TurnEnricher` with
 `ctx.register_turn_enricher(...)`. Its `enrich_turn` callback receives the completed
-turn projection directly, including the optional `messages` transcript; the core does
-not redact this callback's arguments. Before writing to an external index, the enricher
-must call `agent.redact.redact_for_egress` for every string and apply its own size bounds.
+turn projection directly, including the optional `messages` transcript.
 Enricher failures are isolated from the turn. `shutdown()` releases all resources and
 must be idempotent because plugin unload and session teardown can both invoke it; after
 shutdown, no further `enrich_turn` call is made.

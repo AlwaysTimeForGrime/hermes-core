@@ -36,13 +36,15 @@ explicit reload; they must not mutate a live turn's prompt/tool surface.
 | `debug_trace_enabled` | bool | `false` | config + Desktop | Stores bounded observable trace metadata |
 | `trace_max_bytes` | int | `65536` | config + Desktop | Validate `1..262144` |
 | `content_max_bytes` | int | `65536` | config + Desktop | Validate `1..262144` |
-| `max_pending` | int | `64` | config + Desktop | Validate `1..1024`; bounds async work |
-| `uri` | secret | unset | config + Desktop | Backed by `HERMES_NEO4J_URI` |
-| `username` | secret | unset | config + Desktop | Backed by `HERMES_NEO4J_USERNAME` |
-| `password` | secret | unset | config + Desktop | Backed by `HERMES_NEO4J_PASSWORD` |
+| `uri` | secret | unset | config + Desktop | Backed by `NEO4J_MEMORY_URI` |
+| `username` | secret | unset | config + Desktop | Backed by `NEO4J_MEMORY_USERNAME` |
+| `password` | secret | unset | config + Desktop | Backed by `NEO4J_MEMORY_PASSWORD` |
 
-The plugin must redact secrets from `status`, logs, diagnostics, and config
-exports. `debug_trace_enabled` remains independent from `enabled` and never
+A `max_pending` setting was proposed but is **not** in the current schema, and
+`MemoryManager._submit_background` has no pending-task cap to configure — it
+serializes on a single-worker daemon executor.
+
+`debug_trace_enabled` remains independent from `enabled` and never
 permits hidden reasoning to be stored.
 
 ## Task list
@@ -69,8 +71,8 @@ suite.
 
 **Files likely touched:**
 
-- `C:/Users/ubuntu/AppData/Local/hermes/neo4j-memory/plugin/plugin.yaml`
-- `C:/Users/ubuntu/AppData/Local/hermes/neo4j-memory/plugin/tests/test_config_schema.py`
+- `contrib/neo4j-memory/plugin.yaml`
+- `contrib/neo4j-memory/tests/test_config_schema.py`
 
 **Estimated scope:** Small.
 
@@ -84,7 +86,7 @@ profiles during migration, with config taking precedence.
 **Acceptance criteria:**
 
 - [ ] Disabled or incomplete configuration returns no enricher without raising.
-- [ ] A complete profile config constructs the same bounded, redacting
+- [ ] A complete profile config constructs the same bounded
       enricher used by the live smoke test.
 - [ ] Existing env settings can be migrated/read once without becoming a new
       core configuration surface.
@@ -96,9 +98,9 @@ and successful-construction cases.
 
 **Files likely touched:**
 
-- `neo4j_memory/neo4j_enrichment.py`
+- `neo4j_memory/enrichment.py`
 - `neo4j_memory/__init__.py`
-- `tests/test_neo4j_enrichment.py`
+- `tests/test_enrichment.py`
 
 **Estimated scope:** Medium.
 
@@ -114,7 +116,7 @@ and successful-construction cases.
 
 **Description:** Register a plugin-owned command tree with `status`, `config`,
 and `doctor` subcommands. `status` reports enabled state, selected database,
-redacted endpoint, driver reachability, queue/metric counters, and the last
+endpoint, driver reachability, queue/metric counters, and the last
 failure class. `config` reads/writes plugin-relative settings through Hermes'
 config writer. `doctor` gives actionable remediation without exposing secrets.
 
@@ -148,7 +150,7 @@ mutations stay in the CLI/config surfaces and apply on the next session.
 **Acceptance criteria:**
 
 - [ ] Status is available only when the plugin is loaded.
-- [ ] Output is bounded, redacted, and useful in CLI, gateway, and ACP contexts.
+- [ ] Output is bounded and useful in CLI, gateway, and ACP contexts.
 - [ ] The command does not rebuild the system prompt or tool surface.
 
 **Verification:** Slash-command registry tests and a gateway/ACP serialization
@@ -197,15 +199,19 @@ config round-trip test against a temporary profile.
 
 ### Phase 3: Migration, diagnostics, and release
 
-#### Task 6: Migrate existing env profiles
+#### Task 6: Migrate existing env-only setups
 
-**Description:** Add an explicit migration/read-through path from the existing
-`HERMES_NEO4J_*` values to profile config and secret storage. Preserve values,
-avoid logging credentials, and make the migration idempotent.
+**Description:** The `HERMES_NEO4J_*` names never existed as an activation path;
+`tests/test_enrichment.py::test_legacy_hermes_environment_does_not_activate_plugin`
+asserts they are ignored. Migration therefore covers only profiles that enable the
+plugin from environment state (`NEO4J_MEMORY_URI` / `_USERNAME` / `_PASSWORD`) with
+no `plugins.entries.neo4j-memory.settings` block: read the values once, write the
+`enabled`/bounds settings, and leave the secrets where the schema expects them.
 
 **Acceptance criteria:**
 
-- [ ] Existing enabled profiles continue working after upgrade.
+- [ ] A profile enabled only by `NEO4J_MEMORY_*` keeps working after upgrade.
+- [ ] `HERMES_NEO4J_*` variables remain inert (existing test stays green).
 - [ ] Migration can be rerun without changing values or duplicating state.
 - [ ] A migration report identifies skipped/invalid values without secrets.
 
@@ -280,7 +286,6 @@ migration + docs + release verification
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Config mutation rebuilds a live agent | High | Defer to next session/reload; never change prompt/tool surface mid-turn |
-| Secret appears in status/logs | High | Use secret fields, masked output, and redaction tests |
 | Plugin config is read outside profile scope | High | Resolve through `ctx` and profile-scoped secret APIs only |
 | Bad settings block Hermes startup | High | Fail closed; report through `status`/`doctor`; keep plugin optional |
 | Desktop and CLI schemas drift | Medium | One manifest `config_schema`; test both consumers against it |
@@ -294,7 +299,5 @@ migration + docs + release verification
   enabled env configuration be auto-migrated to `true` once?
 - Should `doctor` perform a live connection by default, or require `--check`
   to avoid network activity in diagnostics?
-- Should the plugin expose queue/metrics only in `status`, or also provide a
-  read-only health endpoint for the existing local dashboard?
 - Which Hermes release/version first guarantees the manifest `config_schema`
   and plugin CLI APIs used by this plan?
