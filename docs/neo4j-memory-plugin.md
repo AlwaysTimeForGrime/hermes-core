@@ -98,19 +98,20 @@ turn completes (not interrupted)
 `Neo4jEnricher.enrich_turn` redacts both strings (`agent/redact.py::redact_for_egress`),
 UTF-8-truncates to `content_max_bytes` (default 64 KiB, cap 256 KiB), then runs a
 parameterized `CREATE (t:HermesTurn {...})`. With
-`HERMES_NEO4J_DEBUG_TRACE_ENABLED` it also stores `trace_json` — a bounded
+the plugin setting `debug_trace_enabled` it also stores `trace_json` — a bounded
 projection of observable user/assistant/tool messages only (system messages are
 omitted); `_HIDDEN_TRACE_KEYS` filters
 chain-of-thought/thinking/reasoning fields. Retries ≤3 on transient errors;
 all failures are logged and swallowed — enrichment can never break a turn.
 
-Enablement is env-only: `HERMES_NEO4J_ENRICHMENT_ENABLED` +
-`HERMES_NEO4J_URI` / `_USERNAME` / `_PASSWORD`; optional `_DATABASE`,
-`_DEBUG_TRACE_ENABLED`, `_DEBUG_TRACE_MAX_BYTES`, `_CONTENT_MAX_BYTES`.
-The values are resolved through Hermes' profile-scoped secret reader, so a
-multiplexed profile never borrows another profile's ambient environment; an
-unscoped multiplex read fails closed. The `neo4j` driver is an opt-in PM extra,
-imported lazily.
+Enablement and ordinary bounds are native plugin settings under
+`plugins.entries.neo4j-memory.settings`: `enabled`, `database`,
+`content_max_bytes`, `debug_trace_enabled`, and `trace_max_bytes`.
+`uri`, `username`, and `password` are secret-schema fields mapped to
+`NEO4J_MEMORY_URI`, `NEO4J_MEMORY_USERNAME`, and `NEO4J_MEMORY_PASSWORD` and
+resolved only through Hermes' profile-scoped secret reader. An unscoped
+multiplex read fails closed. The `neo4j` driver is an opt-in PM extra, imported
+lazily.
 
 `TopicContextLedger` is a separate prototype: cache-only `read`/`snapshot` on the
 turn-start path (never waits on a provider), `schedule`/`start_update`/`accept`
@@ -168,9 +169,9 @@ Why it should be a plugin (per `plugins/AGENTS.md` + root rubric):
 - "Capability lives at the edges"; new capability → plugin, not core.
 - `plugins/memory/` is **closed** to new in-tree providers; new backends ship as
   standalone repos / catalog entries implementing `MemoryProvider`.
-- New `HERMES_*` env vars for non-secret config are a rejected pattern — the
-  `HERMES_NEO4J_*` surface should become `config.yaml` + `.env` secrets via
-  `agent.secret_scope.get_secret`.
+- New `HERMES_*` env vars for non-secret config are a rejected pattern; this
+  plugin now uses the native plugin settings surface and profile-scoped secret
+  fields via `agent.secret_scope.get_secret`.
 - This checkout is a dirty release tag — every `hermes update` risks the work.
 
 The generic seam is now exposed through `ctx.register_turn_enricher(...)`. Live
