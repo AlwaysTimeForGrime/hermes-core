@@ -132,40 +132,6 @@ def test_shutdown_drains_queued_writes_and_boundary_in_fifo_order():
     assert mgr.shutdown_drain_state["abandoned_writes"] == 0
 
 
-def test_shutdown_removes_plugin_enrichers_before_late_sync(monkeypatch):
-    """A closed plugin enricher must not be selected by a sync submitted after teardown."""
-    import hermes_cli.plugins as plugins_mod
-    from hermes_cli.plugins import PluginContext, PluginManager, PluginManifest
-    from agent.memory_provider import TurnEnricher
-
-    class _Enricher(TurnEnricher):
-        def __init__(self):
-            self.shutdowns = 0
-            self.turns = []
-
-        def enrich_turn(self, user_content, assistant_content, **kwargs):
-            self.turns.append((user_content, assistant_content))
-
-        def shutdown(self):
-            self.shutdowns += 1
-
-    plugin_manager = PluginManager()
-    enricher = _Enricher()
-    PluginContext(PluginManifest(name="demo"), plugin_manager).register_turn_enricher(enricher)
-    monkeypatch.setattr(plugins_mod, "get_plugin_manager", lambda: plugin_manager)
-
-    mgr = MemoryManager()
-    mgr.sync_all("before", "response")
-    mgr.shutdown_all()
-    assert enricher.turns == [("before", "response")]
-    assert enricher.shutdowns == 1
-    assert plugin_manager.get_turn_enrichers() == []
-
-    mgr.sync_all("after", "response")
-    assert mgr.flush_pending(timeout=1) is True
-    assert enricher.turns == [("before", "response")]
-
-
 def test_shutdown_timeout_abandons_queued_write_with_state_and_log(monkeypatch, caplog):
     """A wedged active write bounds shutdown and reports queued data loss."""
     import agent.memory_manager as memory_manager_module

@@ -268,28 +268,6 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
         # tracking makes unload/force-reload remove this transport.
         self._track_mapping_entry("approval_transport", clean, transports, entry, None)
 
-    def register_turn_enricher(self, enricher: Any) -> None:
-        """Register an observer-only sink fired after primary memory sync.
-
-        The callback receives the turn projection without core redaction. Enrichers must redact
-        every string and transcript before external egress, bound its size, and make ``shutdown``
-        idempotent because unload and session teardown may both close the sink.
-        """
-        from agent.memory_provider import TurnEnricher
-        if self._wrong_type(enricher, TurnEnricher, "turn enricher", "a"):
-            return
-        self._manager._turn_enrichers.append((self.plugin_id, enricher))
-        _facade().logger.info("Plugin %s registered turn enricher", self.manifest.name)
-        # Track for unload cleanup (shutdown the enricher on plugin unload).
-        def _cleanup() -> None:
-            try:
-                enricher.shutdown()
-            except Exception as e:
-                _facade().logger.warning("Turn enricher shutdown failed (%s)", type(e).__name__)
-            finally:
-                self._manager.remove_turn_enricher(enricher)
-        self._track("turn_enricher", f"turn_enricher:{id(enricher)}", _cleanup)
-
     @_serialized_replacement
     def register_tool(
         self, name: str, toolset: str, schema: dict, handler: Callable,

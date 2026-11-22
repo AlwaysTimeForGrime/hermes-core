@@ -308,10 +308,6 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
         self._approval_transports: dict[str, Any] = {}
         self._slack_action_handlers: list[tuple] = []
         self._platform_handler_factories: dict[str, list[tuple]] = {}
-        # Turn enrichers registered by plugins (observer-only sinks for completed turns).
-        # Keep ownership with each registration so force-reload/unload cannot leave a
-        # closed enricher in a later turn.
-        self._turn_enrichers: list[tuple[str, Any]] = []
         # Process-owned discovery listeners (``on_plugin_loaded``); never cleared by unload().
         self._plugin_loaded_listeners: list[Callable] = []
         # Event bus: owner-tagged subscriptions (unload removes zombies); one daemon worker keeps
@@ -598,18 +594,6 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
         if registered is None or registered.profile_home != str(get_hermes_home().resolve()):
             return None
         return registered
-
-    def get_turn_enrichers(self) -> list[Any]:
-        """Return the currently registered plugin turn enrichers."""
-        return [enricher for _owner, enricher in self._turn_enrichers]
-
-    def remove_turn_enricher(self, enricher: Any) -> None:
-        """Remove a plugin turn enricher by identity after its resources are closed."""
-        self._turn_enrichers[:] = [
-            (owner, existing)
-            for owner, existing in self._turn_enrichers
-            if existing is not enricher
-        ]
 
     def _collect_directory_manifests(self) -> list[PluginManifest]:
         """Directory manifests in full-discovery order (see :func:`collect_directory_manifests`)."""

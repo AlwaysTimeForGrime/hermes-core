@@ -213,9 +213,6 @@ class MemoryManager:
 
     def __init__(self, *, external_prefetch_timeout: Optional[float] = None) -> None:
         self._providers: list[MemoryProvider] = []
-        # Observer-only sinks (TurnEnricher) mirroring completed turns into secondary
-        # indexes. They never provide recall, and their failures are swallowed.
-        self._secondary_enrichers: list[Any] = []
         self._tool_to_provider: dict[str, MemoryProvider] = {}
         self._external_prefetch_spill_config: Optional[dict[str, Any]] = None
         self._has_external: bool = False
@@ -349,39 +346,6 @@ class MemoryManager:
     def providers(self) -> list[MemoryProvider]:
         return list(self._providers)
 
-    def has_secondary_enricher(self, enricher_type: type) -> bool:
-        """True when a secondary enricher of ``enricher_type`` is already registered."""
-        return any(type(existing) is enricher_type for existing in self._secondary_enrichers)
-
-    def _get_turn_enrichers(self) -> list[Any]:
-        """Return all turn enrichers (manager-local + plugin-registered)."""
-        # Read the manager-owned registry on every turn: plugins can be loaded or
-        # unloaded between turns, especially after a forced discovery sweep.
-        try:
-            from hermes_cli.plugins import get_plugin_manager
-            plugin_enrichers = get_plugin_manager().get_turn_enrichers()
-        except Exception as exc:
-            logger.warning("Turn enricher discovery failed (%s)", type(exc).__name__)
-            plugin_enrichers = []
-        return list(self._secondary_enrichers) + plugin_enrichers
-
-    def add_secondary_enricher(self, enricher: Any) -> None:
-        """Register a best-effort async index/enrichment sink beside the primary provider.
-
-        A rejected duplicate is shut down on the spot: callers that rebuild per
-        turn must never leak a constructed-but-unregistered enricher (e.g. a
-        fresh driver per agent init).
-        """
-        if enricher is None:
-            return
-        if any(type(existing) is type(enricher) for existing in self._secondary_enrichers):
-            try:
-                enricher.shutdown()
-            except Exception as e:
-                logger.warning("Rejected duplicate secondary enricher shutdown failed (%s)", type(e).__name__)
-            return
-        self._secondary_enrichers.append(enricher)
-
     def get_provider(self, name: str) -> Optional[MemoryProvider]:
         return next((p for p in self._providers if p.name == name), None)
 
@@ -510,26 +474,11 @@ class MemoryManager:
         if self._fork_turn_hooks_suppressed():
             return
         providers = list(self._providers)
-        enrichers = self._get_turn_enrichers()
-        if not providers and not enrichers:
-            return
-        if not self._owner_allows("sync_turn"):
-            return
         clean_user_content = self._strip_skill_scaffolding(user_content) if providers else None
-        # Provider content gates (empty after scaffold-strip) must not silence
-        # secondary enrichers: they are indexes, not providers, take the raw turn
-        # and scrub it themselves, and a turn providers declined is still worth
-        # indexing. Fork suppression and caller scope above still gate both.
-        provider_sync = bool(clean_user_content)
-        enricher_sync = bool(enrichers) and bool(user_content) and bool(assistant_content)
-        if not provider_sync and not enricher_sync:
+        if not clean_user_content or not self._owner_allows("sync_turn"):
             return
-
-        redacted_messages = None
-        assistant_content_sync = assistant_content
-        if provider_sync:
-            clean_user_content, assistant_content_sync, redacted_messages = _redact_for_provider(
-                clean_user_content, assistant_content, messages)
+        clean_user_content, assistant_content, redacted_messages = _redact_for_provider(
+            clean_user_content, assistant_content, messages)
         optional_kwargs = {"messages": redacted_messages, "turn_author": turn_author}
 
         def _sync(provider: MemoryProvider) -> None:
@@ -538,21 +487,11 @@ class MemoryManager:
                 if value is not None and self._provider_sync_accepts(provider, keyword):
                     kwargs[keyword] = value
             self._call_unless_stalled(
-                provider, lambda: provider.sync_turn(clean_user_content, assistant_content_sync, **kwargs))
+                provider, lambda: provider.sync_turn(clean_user_content, assistant_content, **kwargs))
 
-        def _sync_and_enrich() -> None:
-            if provider_sync:
-                self._each_provider("sync_turn failed", _sync, level=logging.WARNING, providers=providers)
-            for enricher in enrichers:
-                try:
-                    enricher.enrich_turn(
-                        user_content, assistant_content, session_id=session_id,
-                        messages=messages,
-                    )
-                except Exception as e:
-                    logger.warning("Secondary memory enricher failed (%s)", type(e).__name__)
-
-        self._submit_background(_sync_and_enrich)
+        self._submit_background(
+            lambda: self._each_provider("sync_turn failed", _sync, level=logging.WARNING, providers=providers)
+        )
 
     def _submit_background(self, fn, *, kind: str = "write") -> None:
         """Queue ``fn`` on the serialized worker (created lazily; None once shutting down) and track its
@@ -951,22 +890,6 @@ class MemoryManager:
     def shutdown_all(self) -> None:
         """Drain the background executor (bounded), then shut providers down in reverse order."""
         self._drain_sync_executor()
-        # Shutdown all turn enrichers (manager-local + plugin-registered)
-        all_enrichers = self._get_turn_enrichers()
-        try:
-            from hermes_cli.plugins import get_plugin_manager
-            plugin_manager = get_plugin_manager()
-        except Exception as exc:
-            logger.warning("Turn enricher cleanup failed (%s)", type(exc).__name__)
-            plugin_manager = None
-        for enricher in all_enrichers[::-1]:
-            try:
-                enricher.shutdown()
-            except Exception as e:
-                logger.warning("Secondary memory enricher shutdown failed (%s)", type(e).__name__)
-            finally:
-                if plugin_manager is not None:
-                    plugin_manager.remove_turn_enricher(enricher)
         self._each_provider("shutdown failed", lambda p: p.shutdown(), level=logging.WARNING,
                             providers=self._providers[::-1])
 

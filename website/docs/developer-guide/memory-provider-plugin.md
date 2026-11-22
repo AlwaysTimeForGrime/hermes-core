@@ -12,13 +12,6 @@ Memory provider plugins give Hermes Agent persistent, cross-session knowledge be
 Memory providers are one of two **provider plugin** types. The other is [Context Engine Plugins](./context-engine-plugin.md), which replace the built-in context compressor. Both follow the same pattern: single-select, config-driven, managed via `hermes plugins`.
 :::
 
-:::note
-Plugins that register a live turn enricher with `ctx.register_turn_enricher(...)` require
-`plugins.isolation: in_process` (the default). Host isolation refuses this registration because
-turn enrichers may hold live database driver connections; set the profile's isolation mode to
-`in_process` before enabling such a plugin.
-:::
-
 ## Installation Layouts
 
 Hermes discovers memory providers from four sources, in this precedence order:
@@ -518,15 +511,6 @@ signature.
 Cloud providers should document what parts of `messages` are sent off-device.
 Tool calls and tool results may contain file paths, command output, or other
 workspace data.
-
-### Turn enrichers
-
-Plugins may register an observer-only `TurnEnricher` with
-`ctx.register_turn_enricher(...)`. Its `enrich_turn` callback receives the completed
-turn projection directly, including the optional `messages` transcript.
-Enricher failures are isolated from the turn. `shutdown()` releases all resources and
-must be idempotent because plugin unload and session teardown can both invoke it; after
-shutdown, no further `enrich_turn` call is made.
 
 ## Profile Isolation
 
